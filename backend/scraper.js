@@ -2,8 +2,9 @@ const puppeteer = require("puppeteer");
 
 async function scrapeImages(url) {
     const browser = await puppeteer.launch({
-    headless: true,
-    executablePath: "/usr/bin/chromium-browser",
+    headless: "new",
+    // 💡 Fix: On Ubuntu, the path is usually just /usr/bin/chromium
+    executablePath: "/usr/bin/chromium", 
     args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
