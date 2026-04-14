@@ -6,15 +6,11 @@ const axios = require("axios");
 
 const app = express();
 
-// ✅ FIX 1: PROPER CORS
 app.use(cors({
     origin: "*",
     methods: ["GET", "POST", "OPTIONS"],
     allowedHeaders: ["Content-Type"]
 }));
-
-// ✅ FIX 2: HANDLE PREFLIGHT (VERY IMPORTANT)
-app.options("(.*)", cors());
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
