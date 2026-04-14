@@ -1,3 +1,19 @@
+let API_BASE_URL = "";
+
+async function loadBackend() {
+    try {
+        const res = await fetch("https://vinay-2014.github.io/food-scraper-frontend/backend.json");
+        const data = await res.json();
+        API_BASE_URL = data.api;
+        console.log("Backend:", API_BASE_URL);
+    } catch (err) {
+        console.error("Backend load failed", err);
+    }
+}
+
+// Load backend first
+loadBackend();
+
 let selectedItems = [];
 
 document.getElementById("fetchBtn").addEventListener("click", fetchImages);
@@ -15,45 +31,50 @@ async function fetchImages() {
     gallery.innerHTML = "Loading...";
     selectedItems = [];
 
-    const res = await fetch("http://localhost:5000/fetch-images", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({ url })
-    });
+    try {
+        const res = await fetch(`${API_BASE_URL}/fetch-images`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({ url })
+        });
 
-    const data = await res.json();
+        const data = await res.json();
 
-    gallery.innerHTML = "";
+        gallery.innerHTML = "";
 
-    data.forEach(item => {
-        const box = document.createElement("div");
+        data.forEach(item => {
+            const box = document.createElement("div");
 
-        const img = document.createElement("img");
-        img.src = item.image;
-        img.classList.add("selected");
+            const img = document.createElement("img");
+            img.src = item.image;
+            img.classList.add("selected");
 
-        const name = document.createElement("p");
-        name.innerText = item.name;
+            const name = document.createElement("p");
+            name.innerText = item.name;
 
-        // ✅ default selected
-        selectedItems.push(item);
+            selectedItems.push(item);
 
-        img.onclick = () => {
-            img.classList.toggle("selected");
+            img.onclick = () => {
+                img.classList.toggle("selected");
 
-            const exists = selectedItems.find(i => i.image === item.image);
+                const exists = selectedItems.find(i => i.image === item.image);
 
-            if (exists) {
-                selectedItems = selectedItems.filter(i => i.image !== item.image);
-            } else {
-                selectedItems.push(item);
-            }
-        };
+                if (exists) {
+                    selectedItems = selectedItems.filter(i => i.image !== item.image);
+                } else {
+                    selectedItems.push(item);
+                }
+            };
 
-        box.appendChild(img);
-        box.appendChild(name);
-        gallery.appendChild(box);
-    });
+            box.appendChild(img);
+            box.appendChild(name);
+            gallery.appendChild(box);
+        });
+
+    } catch (err) {
+        console.error("FETCH ERROR:", err);
+        gallery.innerHTML = "Error: Check console (F12)";
+    }
 }
 
 async function downloadZip() {
@@ -66,16 +87,14 @@ async function downloadZip() {
     const text = document.getElementById("btnText");
     const spinner = document.getElementById("loaderSpinner");
 
-    // 🔥 Show loader
     btn.disabled = true;
     text.innerText = "Downloading...";
     spinner.classList.remove("hidden");
 
     try {
-        // 🔥 DIRECT DOWNLOAD (no blob, no waiting)
         const form = document.createElement("form");
         form.method = "POST";
-        form.action = "http://127.0.0.1:5000/download";
+        form.action = `${API_BASE_URL}/download`;
 
         const input = document.createElement("input");
         input.type = "hidden";
@@ -85,7 +104,7 @@ async function downloadZip() {
         form.appendChild(input);
         document.body.appendChild(form);
 
-        form.submit(); // 🚀 triggers download instantly
+        form.submit();
         form.remove();
 
     } catch (err) {
@@ -93,7 +112,6 @@ async function downloadZip() {
         alert("Download failed");
     }
 
-    // ⏳ small delay then reset button
     setTimeout(() => {
         btn.disabled = false;
         text.innerText = "Download Selected";
