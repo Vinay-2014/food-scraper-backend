@@ -14,7 +14,7 @@ app.use(cors({
 }));
 
 // ✅ FIX 2: HANDLE PREFLIGHT (VERY IMPORTANT)
-app.options("(.*", cors());
+app.options("(.*)", cors());
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
