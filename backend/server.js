@@ -5,22 +5,37 @@ const archiver = require("archiver");
 const axios = require("axios");
 
 const app = express();
-app.use(cors());
+
+// ✅ FIX 1: PROPER CORS
+app.use(cors({
+    origin: "*",
+    methods: ["GET", "POST", "OPTIONS"],
+    allowedHeaders: ["Content-Type"]
+}));
+
+// ✅ FIX 2: HANDLE PREFLIGHT (VERY IMPORTANT)
+app.options("*", cors());
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// ---------------- FETCH IMAGES ----------------
 app.post("/fetch-images", async (req, res) => {
     try {
         const data = await scrapeImages(req.body.url);
         res.json(data);
     } catch (err) {
-        console.log(err);
-        res.status(500).send("Error fetching images");
+        console.log("SCRAPER ERROR:", err);
+
+        res.status(500).json({
+            error: "Failed to fetch images",
+            details: err.message
+        });
     }
 });
 
+// ---------------- DOWNLOAD ZIP ----------------
 app.post("/download", async (req, res) => {
-    // 🔥 FIX: parse items correctly
     let items = req.body.items;
 
     if (typeof items === "string") {
@@ -38,14 +53,14 @@ app.post("/download", async (req, res) => {
     res.setHeader("Content-Type", "application/zip");
     res.setHeader("Content-Disposition", "attachment; filename=food-images.zip");
 
-    const archive = require("archiver")("zip", { zlib: { level: 9 } });
+    const archive = archiver("zip", { zlib: { level: 9 } });
     archive.pipe(res);
 
     for (let item of items) {
         try {
-            if (!item.image) continue; // ✅ fix undefined issue
+            if (!item.image) continue;
 
-            const response = await require("axios")({
+            const response = await axios({
                 url: item.image,
                 method: "GET",
                 responseType: "stream"
@@ -69,6 +84,7 @@ app.post("/download", async (req, res) => {
     archive.finalize();
 });
 
-app.listen(5000, () => {
-    console.log("Server running on http://localhost:5000");
+// ✅ FIX 3: LISTEN ON PUBLIC INTERFACE
+app.listen(5000, "0.0.0.0", () => {
+    console.log("Server running on port 5000");
 });
