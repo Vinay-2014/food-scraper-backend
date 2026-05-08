@@ -1,156 +1,597 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
-const { chromium } = require('playwright-extra');
-const stealth = require('puppeteer-extra-plugin-stealth')();
-chromium.use(stealth);
+const { chromium } = require('playwright');
 
-/* -----------------------------
-   CLEAN URL (Raw Master File Bypass)
------------------------------ */
+/* ─────────────────────────────────────
+   CLEAN IMAGE URL
+───────────────────────────────────── */
 function cleanUrl(url) {
+
   if (!url) return null;
-  let cleaned = url.split('?')[0]; 
-  cleaned = cleaned.replace(/\/s\d+x\d+\//g, '/')
-                   .replace(/\/s\d+\//g, '/')
-                   .replace(/\/(w|h|width|height|fit|crop|auto)_\d+\//ig, '/')
-                   .replace(/_thumb|_small|_sq/g, '');
-  return cleaned;
+
+  return url
+    .split('?')[0]
+    .replace(/-\d+x\d+(\.(jpg|jpeg|png|webp))/i, '$1');
 }
 
-/* -----------------------------
-   STATIC SCRAPER
------------------------------ */
-async function scrapeStatic(url) {
-  try {
-    const { data } = await axios.get(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
-    });
-    const $ = cheerio.load(data);
-    let results = [];
-    $('img').each((i, el) => {
-      let src = $(el).attr('src') || $(el).attr('data-src') || $(el).attr('data-original');
-      if ($(el).attr('srcset')) {
-        const parts = $(el).attr('srcset').split(',');
-        src = parts[parts.length - 1].trim().split(' ')[0];
-      }
-      src = cleanUrl(src);
-      if (src && src.startsWith('http')) results.push({ src, name: $(el).attr('alt') || '' });
-    });
-    return results;
-  } catch (e) { return []; }
+/* ─────────────────────────────────────
+   VALID TEXT
+───────────────────────────────────── */
+function isValidName(text) {
+
+  if (!text) return false;
+
+  text = text.trim();
+
+  if (text.length < 2) return false;
+  if (text.length > 120) return false;
+
+  if (/^\d+$/.test(text)) return false;
+
+  return true;
 }
 
-/* -----------------------------
-   DYNAMIC SCRAPER
------------------------------ */
-async function scrapeDynamic(url) {
-  const browser = await chromium.launch({ args: ['--no-sandbox'] });
-  const context = await browser.newContext({
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    viewport: { width: 2560, height: 1440 },
-    deviceScaleFactor: 2 
-  });
-  const page = await context.newPage();
-  const imageSet = new Set();
+/* ─────────────────────────────────────
+   FIND NAME FROM HTML
+───────────────────────────────────── */
+function findName($, img) {
 
-  page.on('response', async (response) => {
-    try {
-      const resUrl = response.url();
-      const type = response.headers()['content-type'] || '';
-      if (type.includes('image')) imageSet.add(cleanUrl(resUrl));
-    } catch (e) {}
-  });
+  const alt = $(img).attr('alt');
 
-  try {
-    try { await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 }); } 
-    catch (e) {}
-    await page.waitForTimeout(5000);
-    await page.evaluate(async () => {
-      for (let i = 0; i < 8; i++) {
-        window.scrollBy(0, window.innerHeight);
-        await new Promise(r => setTimeout(r, 1200));
+  if (isValidName(alt)) {
+    return alt.trim();
+  }
+
+  let parent = $(img).parent();
+
+  for (let i = 0; i < 6; i++) {
+
+    const heads =
+      parent.find('h1,h2,h3,h4,h5,h6');
+
+    for (let j = 0; j < heads.length; j++) {
+
+      const txt =
+        $(heads[j]).text().trim();
+
+      if (isValidName(txt)) {
+        return txt;
       }
-    });
-
-    let domImages = [];
-    for (const frame of page.frames()) {
-      try {
-        const frameImages = await frame.evaluate(() => {
-          function clean(url) {
-            if (!url) return null;
-            return url.split('?')[0].replace(/\/s\d+x\d+\//g, '/').replace(/\/s\d+\//g, '/');
-          }
-          function getBest(img) {
-            const master = img.getAttribute('data-image-url') || img.getAttribute('data-src-full') || img.getAttribute('data-zoom-src');
-            if (master) return clean(master);
-            return clean(img.src);
-          }
-          function findName(img) {
-            if (img.alt && img.alt.length > 2 && !img.alt.match(/image|logo|placeholder/i)) return img.alt.trim();
-            const container = img.closest('article, li, .item, .menu-item, .product, .card');
-            if (container) {
-              const header = container.querySelector('h1, h2, h3, h4, h5, h6, .name, .title');
-              if (header) return header.innerText.split('\n')[0].trim();
-            }
-            let current = img.parentElement;
-            for (let i = 0; i < 4; i++) {
-              if (!current) break;
-              const lines = current.innerText.split('\n').map(t => t.trim()).filter(t => t.length > 2 && t.length < 50 && !t.match(/^\$/));
-              if (lines.length > 0) return lines[0];
-              current = current.parentElement;
-            }
-            return '';
-          }
-          let results = [];
-          document.querySelectorAll('img').forEach(img => {
-            const src = getBest(img);
-            if (src) results.push({ src, name: findName(img) });
-          });
-          return results;
-        });
-        domImages = [...domImages, ...frameImages];
-      } catch (e) {}
     }
-    await browser.close();
-    const networkImages = Array.from(imageSet).map(src => {
-      let name = '';
-      let filename = src.split('/').pop().split('.')[0];
-      if (filename.length > 3 && !filename.match(/\d{5,}/)) {
-          name = filename.replace(/[-_]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+
+    parent = parent.parent();
+  }
+
+  return '';
+}
+
+/* ─────────────────────────────────────
+   JSON IMAGE EXTRACTION
+───────────────────────────────────── */
+function extractFromJson(obj, results) {
+
+  if (!obj) return;
+
+  if (Array.isArray(obj)) {
+
+    obj.forEach(item =>
+      extractFromJson(item, results)
+    );
+
+    return;
+  }
+
+  if (typeof obj === 'object') {
+
+    let foundImage = null;
+    let foundName = '';
+
+    const imageKeys = [
+      'image',
+      'imageurl',
+      'photo',
+      'photourl',
+      'thumbnail',
+      'heroimage',
+      'src'
+    ];
+
+    for (const key in obj) {
+
+      const value = obj[key];
+
+      extractFromJson(value, results);
+
+      // image detection
+      if (
+        typeof value === 'string' &&
+        value.match(/\.(jpg|jpeg|png|webp|gif)/i)
+      ) {
+
+        if (
+          imageKeys.some(k =>
+            key.toLowerCase().includes(k)
+          )
+        ) {
+
+          foundImage = cleanUrl(value);
+        }
       }
-      return { src, name };
+
+      // name detection
+      if (
+        typeof value === 'string' &&
+        value.length > 2 &&
+        value.length < 120
+      ) {
+
+        if (
+          key.toLowerCase().includes('name') ||
+          key.toLowerCase().includes('title')
+        ) {
+
+          foundName = value.trim();
+        }
+      }
+    }
+
+    if (foundImage) {
+
+      results.push({
+        src: foundImage,
+        name: foundName
+      });
+    }
+  }
+}
+
+/* ─────────────────────────────────────
+   STATIC SCRAPER
+───────────────────────────────────── */
+async function scrapeStatic(url) {
+
+  try {
+
+    const { data } =
+      await axios.get(url, {
+        timeout: 25000,
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0'
+        }
+      });
+
+    const $ = cheerio.load(data);
+
+    const images = [];
+
+    $('img').each((i, el) => {
+
+      let src =
+        $(el).attr('src') ||
+        $(el).attr('data-src') ||
+        $(el).attr('data-lazy-src');
+
+      // srcset
+      const srcset =
+        $(el).attr('srcset');
+
+      if (srcset) {
+
+        const parts =
+          srcset.split(',');
+
+        src =
+          parts[parts.length - 1]
+            .trim()
+            .split(' ')[0];
+      }
+
+      src = cleanUrl(src);
+
+      if (
+        !src ||
+        !src.startsWith('http')
+      ) {
+        return;
+      }
+
+      if (
+        !src.match(/\.(jpg|jpeg|png|webp|gif)/i)
+      ) {
+        return;
+      }
+
+      images.push({
+        src,
+        name: findName($, el)
+      });
     });
-    return [...domImages, ...networkImages];
+
+    return images;
+
   } catch (err) {
-    await browser.close();
+
+    console.log(
+      'Static scrape failed'
+    );
+
     return [];
   }
 }
 
-async function scrapeWebsite(url) {
-  let images = await scrapeStatic(url);
-  if (images.length < 10) images = await scrapeDynamic(url);
-  const fingerprintMap = new Map();
+/* ─────────────────────────────────────
+   DYNAMIC SCRAPER
+───────────────────────────────────── */
+async function scrapeDynamic(url) {
 
-  // Keyword Blacklist
-  const blacklist = ['visa', 'mastercard', 'amex', 'discover', 'applepay', 'googlepay', 'cashapp', 'logo', 'icon', 'button', 'banner', 'social'];
+  const browser =
+    await chromium.launch({
+      headless: false
+    });
 
-  images.forEach(img => {
-    if (!img.src || img.src.startsWith('data:')) return;
-    const urlLower = img.src.toLowerCase();
-    if (blacklist.some(word => urlLower.includes(word))) return;
+  const page =
+    await browser.newPage({
 
-    const fingerprint = img.src.split('/').pop().replace(/\.(jpg|jpeg|png|webp)/i, '').replace(/-\d+x\d+$/i, '');
-    if (!fingerprintMap.has(fingerprint)) {
-      fingerprintMap.set(fingerprint, img);
-    } else {
-      const existing = fingerprintMap.get(fingerprint);
-      if ((!existing.name || existing.name === 'No name') && img.name) {
-        fingerprintMap.set(fingerprint, img);
+      javaScriptEnabled: true,
+
+      viewport: {
+        width: 1440,
+        height: 1200
+      },
+
+      userAgent:
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36'
+    });
+
+  const apiImages = [];
+
+  /* ─────────────────────────────
+     API / NETWORK INTERCEPT
+  ───────────────────────────── */
+  page.on('response', async response => {
+
+    try {
+
+      const responseUrl =
+        response.url();
+
+      // direct image requests
+      if (
+        responseUrl.match(/\.(jpg|jpeg|png|webp|gif)/i)
+      ) {
+
+        apiImages.push({
+          src: cleanUrl(responseUrl),
+          name: ''
+        });
       }
-    }
+
+      // json responses
+      const type =
+        response.headers()['content-type'] || '';
+
+      if (
+        type.includes('application/json')
+      ) {
+
+        const json =
+          await response.json();
+
+        extractFromJson(
+          json,
+          apiImages
+        );
+      }
+
+    } catch (err) {}
   });
-  return Array.from(fingerprintMap.values());
+
+  try {
+
+    await page.goto(url, {
+      waitUntil: 'domcontentloaded',
+      timeout: 90000
+    });
+
+    // lazy loading
+    await page.waitForTimeout(6000);
+
+    // scroll page
+    await page.evaluate(async () => {
+
+      for (let i = 0; i < 12; i++) {
+
+        window.scrollBy(
+          0,
+          window.innerHeight
+        );
+
+        await new Promise(r =>
+          setTimeout(r, 1500)
+        );
+      }
+    });
+
+    // extra wait
+    await page.waitForTimeout(3000);
+
+    const pageImages =
+      await page.evaluate(() => {
+
+        function clean(url) {
+
+          if (!url) return null;
+
+          return url
+            .split('?')[0]
+            .replace(
+              /-\d+x\d+(\.(jpg|jpeg|png|webp))/i,
+              '$1'
+            );
+        }
+
+        function valid(text) {
+
+          if (!text) return false;
+
+          text = text.trim();
+
+          return (
+            text.length > 2 &&
+            text.length < 120
+          );
+        }
+
+        function getName(img) {
+
+          if (valid(img.alt)) {
+            return img.alt.trim();
+          }
+
+          let parent =
+            img.parentElement;
+
+          for (let i = 0; i < 6; i++) {
+
+            if (!parent) break;
+
+            const heads =
+              parent.querySelectorAll(
+                'h1,h2,h3,h4,h5,h6'
+              );
+
+            for (const h of heads) {
+
+              const txt =
+                h.innerText?.trim();
+
+              if (valid(txt)) {
+                return txt;
+              }
+            }
+
+            parent =
+              parent.parentElement;
+          }
+
+          return '';
+        }
+
+        const results = [];
+
+        // IMG TAGS
+        document
+          .querySelectorAll('img')
+          .forEach(img => {
+
+            let src =
+              img.src;
+
+            // best srcset image
+            if (img.srcset) {
+
+              const parts =
+                img.srcset.split(',');
+
+              src =
+                parts[parts.length - 1]
+                  .trim()
+                  .split(' ')[0];
+            }
+
+            src = clean(src);
+
+            if (
+              !src ||
+              !src.startsWith('http')
+            ) {
+              return;
+            }
+
+            if (
+              !src.match(
+                /\.(jpg|jpeg|png|webp|gif)/i
+              )
+            ) {
+              return;
+            }
+
+            results.push({
+              src,
+              name: getName(img)
+            });
+          });
+
+        // CSS BACKGROUND IMAGES
+        document
+          .querySelectorAll('*')
+          .forEach(el => {
+
+            const style =
+              window.getComputedStyle(el);
+
+            const bg =
+              style.backgroundImage;
+
+            if (
+              bg &&
+              bg !== 'none'
+            ) {
+
+              const match =
+                bg.match(/url\("(.*?)"\)/);
+
+              if (
+                match &&
+                match[1]
+              ) {
+
+                results.push({
+                  src: clean(match[1]),
+                  name:
+                    el.innerText?.trim() || ''
+                });
+              }
+            }
+          });
+
+        return results;
+      });
+
+    await browser.close();
+
+    return [
+      ...pageImages,
+      ...apiImages
+    ];
+
+  } catch (err) {
+
+    await browser.close();
+
+    console.log(
+      'Dynamic scrape failed:',
+      err.message
+    );
+
+    return apiImages;
+  }
 }
 
-module.exports = { scrapeWebsite };
+/* ─────────────────────────────────────
+   DEDUPLICATE
+───────────────────────────────────── */
+function deduplicate(images) {
+
+  const map = new Map();
+
+  for (const img of images) {
+
+    if (!img.src) continue;
+
+    const src =
+      cleanUrl(img.src);
+
+    const name =
+      (img.name || '')
+        .trim();
+
+    // already exists?
+    if (map.has(src)) {
+
+      const existing =
+        map.get(src);
+
+      // IMPORTANT:
+      // Prefer named version
+      if (
+        !existing.name &&
+        name
+      ) {
+
+        existing.name = name;
+      }
+
+      // ALSO:
+      // allow duplicate same-image
+      // ONLY if BOTH have valid names
+      else if (
+        existing.name &&
+        name &&
+        existing.name !== name
+      ) {
+
+        map.set(
+          `${src}__${name}`,
+          {
+            src,
+            name
+          }
+        );
+      }
+
+    } else {
+
+      map.set(src, {
+        src,
+        name
+      });
+    }
+  }
+
+  return Array.from(map.values());
+}
+
+/* ─────────────────────────────────────
+   MAIN SCRAPER
+───────────────────────────────────── */
+async function scrapeWebsite(url) {
+
+  console.log('\n========================');
+  console.log('STARTING SCRAPE');
+  console.log('========================\n');
+
+  console.log(
+    'Running static scrape...'
+  );
+
+  const staticImages =
+    await scrapeStatic(url);
+
+  console.log(
+    `Static found: ${staticImages.length}`
+  );
+
+  console.log(
+    'Running dynamic scrape...'
+  );
+
+  const dynamicImages =
+    await scrapeDynamic(url);
+
+  console.log(
+    `Dynamic found: ${dynamicImages.length}`
+  );
+
+  const merged = [
+    ...staticImages,
+    ...dynamicImages
+  ];
+
+  const finalImages =
+    deduplicate(merged);
+
+  console.log(
+    `FINAL IMAGES: ${finalImages.length}`
+  );
+
+  return finalImages;
+}
+
+/* ─────────────────────────────────────
+   EXPORT
+───────────────────────────────────── */
+module.exports = {
+  scrapeWebsite
+};

@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Food Image Scraper</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <div class="app">
+    <header>
+      <h1>🍔 Food Image Scraper</h1>
+      <p class="subtitle">Click images to select/unselect • Double-click to preview</p>
+    </header>
+
+    <section class="controls">
+      <input id="urlInput" type="text" placeholder="Paste restaurant URL (https://...)" />
+      <button id="scrapeBtn" onclick="scrape()">Scrape</button>
+    </section>
+
+    <section id="alerts"></section>
+
+    <section id="loader" class="hidden">
+      <div class="spinner"></div>
+      <p>Scraping… this may take a few seconds</p>
+    </section>
+
+    <section id="stats" class="hidden stats">
+      <div>
+        <strong id="count">0</strong> images •
+        <strong id="selectedCount">0</strong> selected
+      </div>
+      <div>
+        <button onclick="selectAll()">Select All</button>
+        <button onclick="clearSelection()">Clear</button>
+        <button class="primary" onclick="downloadZip()">Download ZIP</button>
+      </div>
+    </section>
+
+    <section id="grid" class="grid"></section>
+  </div>
+
+  <div id="downloadOverlay" class="hidden">
+    <div class="overlay-content">
+      <div class="spinner large-spinner"></div>
+      <h2>Packing your images...</h2>
+      <p id="quoteText" class="quote">Preparing pixels...</p>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
