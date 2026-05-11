@@ -227,7 +227,7 @@ async function scrapeDynamic(url) {
 
   const browser =
     await chromium.launch({
-      headless: false
+      headless: true
     });
 
   const page =
