@@ -152,10 +152,7 @@ function clearSelection() {
 // --- Replace downloadZip() in script.js ---
 
 const quotes = [
-  "Are you a ZIP file? Because you've got everything I'm looking for. 😉",
   "Compression in progress. Squishing these pixels with love...",
-  "You must be a keyboard, because you're exactly my type. Hang tight...",
-  "Are you a Wi-Fi signal? Because I'm feeling a strong connection to these images.",
   "Good things come to those who wait. And to those who scrape.",
   "Baking the ZIP archive... please don't open the oven.",
   "If data were a dessert, this ZIP would be a molten lava cake.",
