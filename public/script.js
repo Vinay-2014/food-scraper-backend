@@ -1,3 +1,5 @@
+const API = "https://modify-decisions-offices-bus.trycloudflare.com";
+
 let scrapedImages = [];
 let selectedImages = [];
 
@@ -32,7 +34,7 @@ async function scrape() {
   document.getElementById("stats").classList.add("hidden");
 
   try {
-    const res = await fetch("http://ORACLE_IP:3001/scrape", {
+    const res = await fetch(`${API}/scrape`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url })
@@ -187,7 +189,7 @@ async function downloadZip() {
   }, 3500); 
 
   try {
-    const res = await fetch("http://ORACLE_IP:3001/download", {
+    const res = await fetch(`${API}/download`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ images: selectedImages })
