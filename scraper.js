@@ -28,39 +28,108 @@ function isValidName(text) {
 
   if (/^\d+$/.test(text)) return false;
 
+  const badWords = [
+    'login',
+    'sign up',
+    'menu',
+    'home',
+    'cart',
+    'order now',
+    'view more',
+    'click here',
+    'read more',
+    'add to cart'
+  ];
+
+  if (
+    badWords.some(word =>
+      text.toLowerCase().includes(word)
+    )
+  ) {
+    return false;
+  }
+
   return true;
 }
 
 /* ─────────────────────────────────────
-   FIND NAME FROM HTML
-   (original — untouched)
+   IMPROVED FIND NAME FROM HTML
 ───────────────────────────────────── */
 function findName($, img) {
 
+  const candidates = [];
+
+  // ALT
   const alt = $(img).attr('alt');
 
   if (isValidName(alt)) {
-    return alt.trim();
+    candidates.push(alt.trim());
   }
 
+  // TITLE
+  const title = $(img).attr('title');
+
+  if (isValidName(title)) {
+    candidates.push(title.trim());
+  }
+
+  // ARIA LABEL
+  const aria = $(img).attr('aria-label');
+
+  if (isValidName(aria)) {
+    candidates.push(aria.trim());
+  }
+
+  // DATA ATTRIBUTES
+  const dataName =
+    $(img).attr('data-name') ||
+    $(img).attr('data-title');
+
+  if (isValidName(dataName)) {
+    candidates.push(dataName.trim());
+  }
+
+  // WALK PARENTS
   let parent = $(img).parent();
 
   for (let i = 0; i < 6; i++) {
 
-    const heads =
-      parent.find('h1,h2,h3,h4,h5,h6');
-
-    for (let j = 0; j < heads.length; j++) {
-
-      const txt =
-        $(heads[j]).text().trim();
-
-      if (isValidName(txt)) {
-        return txt;
-      }
+    if (!parent || parent.length === 0) {
+      break;
     }
 
+    parent.find(
+      'h1,h2,h3,h4,h5,h6,span,p,a,strong,div'
+    ).each((_, el) => {
+
+      const txt =
+        $(el).text().trim();
+
+      if (
+        isValidName(txt) &&
+        txt.length < 80
+      ) {
+        candidates.push(txt);
+      }
+    });
+
     parent = parent.parent();
+  }
+
+  // CLEAN DUPLICATES
+  const cleaned =
+    [...new Set(candidates)]
+      .map(t =>
+        t
+          .replace(/\s+/g, ' ')
+          .replace(/[^\w\s\-&]/g, '')
+          .trim()
+      )
+      .filter(Boolean);
+
+  // BEST MATCH
+  if (cleaned.length > 0) {
+    return cleaned[0];
   }
 
   return '';
@@ -68,7 +137,6 @@ function findName($, img) {
 
 /* ─────────────────────────────────────
    JSON IMAGE EXTRACTION
-   (original — untouched)
 ───────────────────────────────────── */
 function extractFromJson(obj, results) {
 
@@ -104,7 +172,7 @@ function extractFromJson(obj, results) {
 
       extractFromJson(value, results);
 
-      // image detection
+      // IMAGE DETECTION
       if (
         typeof value === 'string' &&
         value.match(/\.(jpg|jpeg|png|webp|gif)/i)
@@ -120,7 +188,7 @@ function extractFromJson(obj, results) {
         }
       }
 
-      // name detection
+      // NAME DETECTION
       if (
         typeof value === 'string' &&
         value.length > 2 &&
@@ -148,26 +216,25 @@ function extractFromJson(obj, results) {
 }
 
 /* ─────────────────────────────────────
-   JSON-LD STRUCTURED DATA  ← NEW
-   Extracts name+image pairs from
-   <script type="application/ld+json">
+   JSON-LD STRUCTURED DATA
 ───────────────────────────────────── */
 function extractJsonLd(html) {
   const results = [];
   const regex = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
   let match;
+
   while ((match = regex.exec(html)) !== null) {
     try {
       const json = JSON.parse(match[1]);
       extractFromJson(json, results);
     } catch (e) {}
   }
+
   return results;
 }
 
 /* ─────────────────────────────────────
    STATIC SCRAPER
-   (original + JSON-LD added)
 ───────────────────────────────────── */
 async function scrapeStatic(url) {
 
@@ -186,7 +253,7 @@ async function scrapeStatic(url) {
 
     const images = [];
 
-    // JSON-LD first (reliable name+image pairs)  ← NEW
+    // JSON-LD FIRST
     images.push(...extractJsonLd(data));
 
     $('img').each((i, el) => {
@@ -196,7 +263,7 @@ async function scrapeStatic(url) {
         $(el).attr('data-src') ||
         $(el).attr('data-lazy-src');
 
-      // srcset
+      // SRCSET
       const srcset =
         $(el).attr('srcset');
 
@@ -246,15 +313,13 @@ async function scrapeStatic(url) {
 
 /* ─────────────────────────────────────
    DYNAMIC SCRAPER
-   CHANGE 1: headless: true + executablePath
-   (server has no display, can't use false)
 ───────────────────────────────────── */
 async function scrapeDynamic(url) {
 
   const browser =
     await chromium.launch({
-      headless: true,                                    // ← CHANGED
-      executablePath: '/usr/bin/google-chrome'          // ← ADDED
+      headless: true,
+      executablePath: '/usr/bin/google-chrome'
     });
 
   const page =
@@ -283,7 +348,7 @@ async function scrapeDynamic(url) {
       const responseUrl =
         response.url();
 
-      // direct image requests
+      // DIRECT IMAGE REQUESTS
       if (
         responseUrl.match(/\.(jpg|jpeg|png|webp|gif)/i)
       ) {
@@ -294,7 +359,7 @@ async function scrapeDynamic(url) {
         });
       }
 
-      // json responses
+      // JSON RESPONSES
       const type =
         response.headers()['content-type'] || '';
 
@@ -321,10 +386,10 @@ async function scrapeDynamic(url) {
       timeout: 90000
     });
 
-    // lazy loading
+    // WAIT FOR LAZY LOAD
     await page.waitForTimeout(6000);
 
-    // scroll page
+    // SCROLL PAGE
     await page.evaluate(async () => {
 
       for (let i = 0; i < 12; i++) {
@@ -340,7 +405,7 @@ async function scrapeDynamic(url) {
       }
     });
 
-    // extra wait
+    // EXTRA WAIT
     await page.waitForTimeout(3000);
 
     const pageImages =
@@ -364,43 +429,111 @@ async function scrapeDynamic(url) {
 
           text = text.trim();
 
-          return (
-            text.length > 2 &&
-            text.length < 120
-          );
-        }
+          if (text.length < 2) return false;
+          if (text.length > 120) return false;
 
-        // original getName — untouched
-        function getName(img) {
+          if (/^\d+$/.test(text)) return false;
 
-          if (valid(img.alt)) {
-            return img.alt.trim();
+          const badWords = [
+            'login',
+            'sign up',
+            'menu',
+            'home',
+            'cart',
+            'order now',
+            'view more',
+            'click here',
+            'read more',
+            'add to cart'
+          ];
+
+          if (
+            badWords.some(word =>
+              text.toLowerCase().includes(word)
+            )
+          ) {
+            return false;
           }
 
-          let parent =
-            img.parentElement;
+          return true;
+        }
+
+        /* ─────────────────────────────
+           IMPROVED GET NAME
+        ───────────────────────────── */
+        function getName(img) {
+
+          const candidates = [];
+
+          // ALT
+          if (valid(img.alt)) {
+            candidates.push(img.alt.trim());
+          }
+
+          // TITLE
+          if (valid(img.title)) {
+            candidates.push(img.title.trim());
+          }
+
+          // ARIA
+          const aria =
+            img.getAttribute('aria-label');
+
+          if (valid(aria)) {
+            candidates.push(aria.trim());
+          }
+
+          // DATA ATTRIBUTES
+          const dataName =
+            img.getAttribute('data-name') ||
+            img.getAttribute('data-title');
+
+          if (valid(dataName)) {
+            candidates.push(dataName.trim());
+          }
+
+          // WALK PARENTS
+          let parent = img.parentElement;
 
           for (let i = 0; i < 6; i++) {
 
             if (!parent) break;
 
-            const heads =
+            const els =
               parent.querySelectorAll(
-                'h1,h2,h3,h4,h5,h6'
+                'h1,h2,h3,h4,h5,h6,span,p,a,strong,div'
               );
 
-            for (const h of heads) {
+            for (const el of els) {
 
               const txt =
-                h.innerText?.trim();
+                el.innerText?.trim();
 
-              if (valid(txt)) {
-                return txt;
+              if (
+                valid(txt) &&
+                txt.length < 80
+              ) {
+                candidates.push(txt);
               }
             }
 
-            parent =
-              parent.parentElement;
+            parent = parent.parentElement;
+          }
+
+          // CLEAN
+          const cleaned =
+            [...new Set(candidates)]
+              .map(t =>
+                t
+                  .replace(/\s+/g, ' ')
+                  .replace(/[^\w\s\-&]/g, '')
+                  .trim()
+              )
+              .filter(Boolean);
+
+          // BEST RESULT
+          if (cleaned.length > 0) {
+            return cleaned[0];
           }
 
           return '';
@@ -416,7 +549,7 @@ async function scrapeDynamic(url) {
             let src =
               img.src;
 
-            // best srcset image
+            // BEST SRCSET IMAGE
             if (img.srcset) {
 
               const parts =
@@ -508,9 +641,7 @@ async function scrapeDynamic(url) {
 }
 
 /* ─────────────────────────────────────
-   DEDUPLICATE  ← CHANGE 2
-   Same image + different names = keep both
-   Same image + no name = keep one
+   DEDUPLICATE
 ───────────────────────────────────── */
 function deduplicate(images) {
 
@@ -523,21 +654,34 @@ function deduplicate(images) {
     const src = cleanUrl(img.src);
     const name = (img.name || '').trim();
 
-    if (!srcToNames.has(src)) srcToNames.set(src, new Set());
+    if (!srcToNames.has(src)) {
+      srcToNames.set(src, new Set());
+    }
+
     srcToNames.get(src).add(name);
   }
 
   const results = [];
 
   for (const [src, nameSet] of srcToNames) {
-    nameSet.delete(''); // remove blank entries
+
+    nameSet.delete('');
+
     if (nameSet.size === 0) {
-      // no valid name found at all
-      results.push({ src, name: '' });
+
+      results.push({
+        src,
+        name: ''
+      });
+
     } else {
-      // one entry per unique name
+
       for (const name of nameSet) {
-        results.push({ src, name });
+
+        results.push({
+          src,
+          name
+        });
       }
     }
   }
@@ -597,3 +741,4 @@ async function scrapeWebsite(url) {
 module.exports = {
   scrapeWebsite
 };
+```
