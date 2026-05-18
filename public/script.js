@@ -3,6 +3,16 @@ const API = "https://key-ins-motorcycles-entire.trycloudflare.com";
 let scrapedImages = [];
 let selectedImages = [];
 
+/* ─────────────────────────────────────
+   PROXY HELPER  (NEW)
+   Routes image src through your backend
+   so restaurants can't block hotlinking.
+───────────────────────────────────── */
+function proxyUrl(src) {
+  if (!src) return '';
+  return `${API}/proxy?url=${encodeURIComponent(src)}`;
+}
+
 function showAlert(msg, type = "success") {
   document.getElementById("alerts").innerHTML =
     `<div class="alert ${type}">${msg}</div>`;
@@ -26,7 +36,6 @@ async function scrape() {
     return;
   }
 
-  // reset UI
   grid.innerHTML = "";
   scrapedImages = [];
   selectedImages = [];
@@ -67,7 +76,10 @@ async function scrape() {
   }
 }
 
-// Render each card (click = select/unselect, double-click = preview)
+/* ─────────────────────────────────────
+   RENDER CARD  (FIXED)
+   Uses proxyUrl() so images actually load
+───────────────────────────────────── */
 function renderCard(img, selected = true) {
   const grid = document.getElementById("grid");
 
@@ -75,22 +87,23 @@ function renderCard(img, selected = true) {
   card.className = "card";
   if (selected) card.classList.add("selected");
 
+  // Use proxy URL so restaurant CDNs don't block the img tag
+  const displaySrc = proxyUrl(img.src);
+  const displayName = img.name || "No name";
+
   card.innerHTML = `
-  <img src="${img.src}" alt="" loading="lazy" onerror="this.style.opacity='0.2'">
-    <p>${img.name || "No name"}</p>
+    <img src="${displaySrc}" alt="${displayName}" loading="lazy" onerror="this.style.opacity='0.2'">
+    <p>${displayName}</p>
     <div class="overlay">✓</div>
   `;
 
-  // Toggle select on click
   card.onclick = () => {
     const isSelected = card.classList.contains("selected");
-
     if (isSelected) {
       card.classList.remove("selected");
       selectedImages = selectedImages.filter(i => i.src !== img.src);
     } else {
       card.classList.add("selected");
-      // avoid duplicates
       if (!selectedImages.find(i => i.src === img.src)) {
         selectedImages.push(img);
       }
@@ -98,7 +111,6 @@ function renderCard(img, selected = true) {
     updateCounts();
   };
 
-  // Double-click → preview (NOW PASSES THE NAME)
   card.ondblclick = (e) => {
     e.stopPropagation();
     showPreview(img.src, img.name);
@@ -107,7 +119,10 @@ function renderCard(img, selected = true) {
   grid.appendChild(card);
 }
 
-// Preview modal (NOW SHOWS THE NAME)
+/* ─────────────────────────────────────
+   PREVIEW MODAL  (FIXED)
+   Also uses proxyUrl() for the large preview
+───────────────────────────────────── */
 function showPreview(src, name) {
   const modal = document.createElement("div");
   modal.style = `
@@ -117,10 +132,11 @@ function showPreview(src, name) {
   `;
 
   const displayName = name || "No name found";
+  const displaySrc = proxyUrl(src); // ← proxy here too
 
   modal.innerHTML = `
     <div style="position:relative; text-align:center;">
-      <img src="${src}" style="max-width:85vw;max-height:80vh;border-radius:10px;box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+      <img src="${displaySrc}" style="max-width:85vw;max-height:80vh;border-radius:10px;box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
       <h2 style="color:white; margin-top:20px; font-family:sans-serif; font-weight:600;">${displayName}</h2>
       <button style="
         position:absolute;top:-15px;right:-15px;
@@ -134,23 +150,21 @@ function showPreview(src, name) {
   document.body.appendChild(modal);
 }
 
-// Select all currently shown
 function selectAll() {
   selectedImages = [...scrapedImages];
   document.querySelectorAll(".card").forEach(c => c.classList.add("selected"));
   updateCounts();
 }
 
-// Clear all selections
 function clearSelection() {
   selectedImages = [];
   document.querySelectorAll(".card").forEach(c => c.classList.remove("selected"));
   updateCounts();
 }
 
-// Download (RESTORED FRONTEND VERSION)
-// --- Replace downloadZip() in script.js ---
-
+/* ─────────────────────────────────────
+   DOWNLOAD ZIP
+───────────────────────────────────── */
 const quotes = [
   "Compression in progress. Squishing these pixels with love...",
   "Good things come to those who wait. And to those who scrape.",
@@ -169,21 +183,19 @@ async function downloadZip() {
 
   const overlay = document.getElementById("downloadOverlay");
   const quoteText = document.getElementById("quoteText");
-  
-  // Show overlay and start quotes
+
   overlay.classList.remove("hidden");
   let qIndex = 0;
   quoteText.innerText = quotes[qIndex];
-  
-  // Change quote every 3.5 seconds
+
   quoteInterval = setInterval(() => {
     qIndex = (qIndex + 1) % quotes.length;
-    quoteText.style.opacity = 0; // fade out effect
+    quoteText.style.opacity = 0;
     setTimeout(() => {
       quoteText.innerText = quotes[qIndex];
-      quoteText.style.opacity = 1; // fade in effect
+      quoteText.style.opacity = 1;
     }, 300);
-  }, 3500); 
+  }, 3500);
 
   try {
     const res = await fetch(`${API}/download`, {
@@ -206,7 +218,6 @@ async function downloadZip() {
     console.error(err);
     showAlert("Download failed. The server might be overwhelmed.", "error");
   } finally {
-    // ALWAYS stop the quotes and hide the overlay, even if it fails
     clearInterval(quoteInterval);
     overlay.classList.add("hidden");
   }
